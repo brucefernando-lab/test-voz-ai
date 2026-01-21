@@ -1,113 +1,79 @@
-const { WebSocket, WebSocketServer } = require('ws');
+'use strict';
+
 const http = require('http');
+const { WebSocketServer, WebSocket } = require('ws');
 
-// Configuración
 const PORT = process.env.PORT || 8080;
-const OPENAI_API_KEY = process.env.OPENAI_API_KEY;
 
-if (!OPENAI_API_KEY) {
-  console.error('ERROR: Falta la OPENAI_API_KEY en las variables de entorno');
-  process.exit(1);
-}
-
-// Crear servidor HTTP básico para que Railway sepa que estamos vivos
 const server = http.createServer((req, res) => {
-  res.writeHead(200);
-  res.end('Servidor de Voz AI Activo');
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("OK - Twilio <-> OpenAI Realtime Bridge\n");
+});
+
+server.on('listening', () => {
+  console.log(`[BOOT] HTTP server listening on :${PORT}`);
 });
 
 const wss = new WebSocketServer({ server });
 
-wss.on('connection', (ws) => {
-  console.log('Nueva llamada entrante de Telnyx');
+wss.on('connection', (twilioWs, req) => {
+  console.log('[TWILIO] WebSocket connected');
 
-  // Conectar con OpenAI Realtime API (Modelo Mini)
-  const openaiWs = new WebSocket('wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview-2024-12-17', {
-    headers: {
-      'Authorization': `Bearer ${OPENAI_API_KEY}`,
-      'OpenAI-Beta': 'realtime=v1',
-    },
-  });
+  let streamSid = null;
 
-  let streamId = null;
+  const openaiWs = new WebSocket(
+    'wss://api.openai.com/v1/realtime?model=gpt-4o-mini-realtime-preview',
+    {
+      headers: {
+        Authorization: `Bearer ${process.env.OPENAI_API_KEY}`,
+        'OpenAI-Beta': 'realtime=v1'
+      }
+    }
+  );
 
-  // Cuando OpenAI se conecta
   openaiWs.on('open', () => {
-    console.log('Conectado a OpenAI');
-    
-    // Configurar el Asistente (Instrucciones iniciales)
-    const sessionUpdate = {
-      type: 'session.update',
+    console.log('[OPENAI] Connected');
+
+    openaiWs.send(JSON.stringify({
+      type: "session.update",
       session: {
-        turn_detection: { type: 'server_vad' }, // Detectar silencio automáticamente
-        input_audio_format: 'g711_ulaw',        // Formato de Telnyx
-        output_audio_format: 'g711_ulaw',
-        voice: 'alloy',                         // Voz (alloy, ash, coral)
-        instructions: 'Eres un asistente útil y amable de un centro de llamadas. Tu nombre es Sofia. Responde brevemente y en español. Saluda al cliente.',
-        modalities: ["text", "audio"],
-        temperature: 0.6,
-      },
-    };
-    openaiWs.send(JSON.stringify(sessionUpdate));
+        modalities: ["audio", "text"],
+        voice: "alloy",
+        input_audio_format: "g711_ulaw",
+        output_audio_format: "g711_ulaw",
+        instructions: "Eres Sofía, asistente amable y profesional. Responde breve y claro en español.",
+        turn_detection: { type: "server_vad" }
+      }
+    }));
   });
 
-  // Mensajes desde Telnyx (Audio del cliente)
-  ws.on('message', (data) => {
-    const msg = JSON.parse(data);
+  twilioWs.on('message', (raw) => {
+    const msg = JSON.parse(raw.toString());
 
     if (msg.event === 'start') {
-      streamId = msg.start.stream_id;
-      console.log(`Stream iniciado: ${streamId}`);
-    } else if (msg.event === 'media') {
-      // Enviar audio a OpenAI
-      if (openaiWs.readyState === WebSocket.OPEN) {
-        const audioAppend = {
-          type: 'input_audio_buffer.append',
-          audio: msg.media.payload,
-        };
-        openaiWs.send(JSON.stringify(audioAppend));
-      }
-    } else if (msg.event === 'stop') {
-      console.log('Llamada finalizada por Telnyx');
-      openaiWs.close();
+      streamSid = msg.start.streamSid;
+      console.log('[TWILIO] streamSid:', streamSid);
+    }
+
+    if (msg.event === 'media' && openaiWs.readyState === WebSocket.OPEN) {
+      openaiWs.send(JSON.stringify({
+        type: "input_audio_buffer.append",
+        audio: msg.media.payload
+      }));
     }
   });
 
-  // Mensajes desde OpenAI (Audio de la IA)
-  openaiWs.on('message', (data) => {
-    const response = JSON.parse(data);
+  openaiWs.on('message', (raw) => {
+    const msg = JSON.parse(raw.toString());
 
-    if (response.type === 'session.updated') {
-      console.log('Sesión configurada correctamente');
-    }
-
-    // Cuando OpenAI nos manda audio de respuesta
-    if (response.type === 'response.audio.delta' && response.delta) {
-      const audioPayload = response.delta;
-      // Enviar audio a Telnyx
-      if (ws.readyState === WebSocket.OPEN) {
-        const mediaMessage = {
-          event: 'media',
-          media: {
-            payload: audioPayload,
-          },
-        };
-        ws.send(JSON.stringify(mediaMessage));
-      }
+    if (msg.type === 'response.audio.delta' && msg.delta && streamSid) {
+      twilioWs.send(JSON.stringify({
+        event: "media",
+        streamSid: streamSid,
+        media: { payload: msg.delta }
+      }));
     }
   });
-
-  // Manejo de cierres y errores
-  ws.on('close', () => {
-    console.log('Cliente Telnyx desconectado');
-    if (openaiWs.readyState === WebSocket.OPEN) openaiWs.close();
-  });
-
-  openaiWs.on('close', () => console.log('OpenAI desconectado'));
-  openaiWs.on('error', (error) => console.error('Error OpenAI:', error));
 });
 
-// Iniciar servidor
-server.listen(PORT, () => {
-  console.log(`Servidor escuchando en el puerto ${PORT}`);
-});
+server.listen(PORT, '0.0.0.0');
