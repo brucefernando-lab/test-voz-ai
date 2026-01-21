@@ -1,14 +1,13 @@
 {
-  "name": "ai-voice-bot",
+  "name": "twilio-openai-realtime-bridge",
   "version": "1.0.0",
-  "description": "Bot de voz Telnyx + OpenAI Realtime",
+  "description": "Bridge Twilio Media Streams <-> OpenAI Realtime (G.711 uLaw)",
   "main": "index.js",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-    "ws": "^8.18.0",
-    "dotenv": "^16.4.5"
+    "ws": "^8.18.0"
   },
   "engines": {
     "node": "18.x"
