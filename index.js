@@ -4,56 +4,22 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-const VOICE_MODEL = "gpt-4o-realtime-preview";
+// CAMBIO CRÍTICO: Usamos el modelo "mini", que es mucho más económico
+const VOICE_MODEL = "gpt-4o-mini-realtime-preview";
 
 const { OPENAI_API_KEY, N8N_WEBHOOK_URL, N8N_TRACKING_WEBHOOK_URL } = process.env;
 
-const SYSTEM_MESSAGE = `Eres Sofía. Responde breve. Puedes ser interrumpida.
+const SYSTEM_MESSAGE = `Eres Sofía, Consultora Senior de YouthNex. 
+REGLAS DE ORO PARA AHORRO DE COSTOS:
+1. Sé EXTREMADAMENTE breve. Máximo 2 oraciones por respuesta.
+2. No repitas información si no te la piden.
+3. Si el usuario calla, no rellenes el silencio.
+4. Tono profesional y persuasivo sobre NEX02.
 
-ASISTENTE EXPERTO YOUTH_NEX (NEX02)
-
-PERFIL Y TONO:
-Actúa como un Consultor Senior de YouthNex. Tu tono es profesional, visionario, altamente informado en biotecnología y persuasivo. No eres un contestador automático; eres un facilitador de negocios y salud.Estilo de voz:
-Habla de forma cálida, natural y conversacional.
-Usa pausas cortas como en una llamada real.
-No suenes como asistente automático.
-
-1. CONOCIMIENTO DEL PRODUCTO (NEX02)
-Definición: NEX02 es un activador de la eficiencia celular basado en el intercambio gaseoso y la optimización del oxígeno.
-
-Beneficios Reales y Comprobados:
-Energía Metabólica: Incrementa la producción de ATP en la mitocondria.
-Claridad Mental: Reduce la neblina mental y mejora el enfoque gracias a la oxigenación cerebral.
-Recuperación: Acelera la regeneración de tejidos y recuperación post-esfuerzo.
-Antienvejecimiento: Combate el estrés oxidativo a nivel celular, no solo superficial.
-Diferenciador: No es un suplemento común; es tecnología de biohacking que permite que el cuerpo funcione a su máximo potencial genético.
-
-2. ESQUEMA DE NEGOCIO Y VENTAJAS ESTRATÉGICAS
-Modelo de Negocio: Sistema de Micro-Franquicias de Salud y Longevidad.
-precio de incio 2600 pesos mexicanos incluyen 4 botes de nex02 con envio incluido
-
-Ventajas Competitivas:
-Producto Único sin competencia directa.
-Negocio global escalable.
-Ingresos residuales por consumo recurrente.
-Industria de la longevidad en crecimiento.
-Propuesta de Valor: Ayudamos a las personas a capitalizar su influencia mientras transforman la salud de su comunidad.
-
-3. PROTOCOLO DE ATENCIÓN Y CIERRE
-Identifica si el usuario busca salud o negocio.
-Maneja objeciones enfocándote en valor.
-Objetivo final: agendar llamada o enviar enlace.
-
-REGLAS CRÍTICAS:
-Nunca digas "no lo sé".
-Enfócate en beneficios.
-Sé breve y directo.
-
-Empresa: YouthNex
-Producto: NEX02
-
+PRODUCTO: NEX02 (Biohacking, energía mitocondrial, $2600 MXN con 4 botes).
+NEGOCIO: Micro-franquicias, ingresos residuales.
+OBJETIVO: Agendar llamada o enviar enlace.
 Al final de la llamada envía un reporte.`;
-
 
 const TOOLS = [{
     type: "function",
@@ -68,7 +34,7 @@ const TOOLS = [{
 
 const server = http.createServer((req, res) => {
     res.writeHead(200);
-    res.end('Sofía está en línea y lista');
+    res.end('Sofía Mini está en línea');
 });
 
 const wss = new WebSocketServer({ server });
@@ -88,32 +54,34 @@ wss.on('connection', (connection, req) => {
     });
 
     openAiWs.on('open', () => {
-    console.log('📡 Conectado a OpenAI');
+        console.log('📡 Conectado a OpenAI (Modelo Mini)');
 
-    openAiWs.send(JSON.stringify({
-        type: 'session.update',
-        session: {
-            instructions: SYSTEM_MESSAGE,
-            input_audio_format: 'g711_ulaw',
-            output_audio_format: 'g711_ulaw',
-            voice: "shimmer",
-            temperature: 0.7,
-            turn_detection: { type: 'server_vad' }
-        }
-    }));
+        openAiWs.send(JSON.stringify({
+            type: 'session.update',
+            session: {
+                instructions: SYSTEM_MESSAGE,
+                input_audio_format: 'g711_ulaw',
+                output_audio_format: 'g711_ulaw',
+                voice: "shimmer",
+                temperature: 0.6, // Bajamos un poco la temperatura para que sea más directa
+                turn_detection: { type: 'server_vad' },
+                tools: TOOLS
+            }
+        }));
 
-    // 👇 ESTO HACE QUE SOFÍA HABLE PRIMERO
-    openAiWs.send(JSON.stringify({
-        type: "response.create",
-        response: {
-            modalities: ["audio"],
-            instructions: "Saluda de forma cálida y pregunta cómo puedes ayudar sobre NEX02 o el negocio."
-        }
-    }));
-});
+        openAiWs.send(JSON.stringify({
+            type: "response.create",
+            response: {
+                modalities: ["audio", "text"],
+                instructions: "Saluda corto: 'Hola, soy Sofía de YouthNex, ¿buscas mejorar tu salud o el negocio?'"
+            }
+        }));
+    });
+
     openAiWs.on('message', async (data) => {
         const response = JSON.parse(data);
 
+        // Interrupción: Si el usuario habla, cancelamos la respuesta actual para ahorrar audio
         if (response.type === 'input_audio_buffer.speech_started') {
             openAiWs.send(JSON.stringify({ type: 'response.cancel' }));
             if (streamSid) connection.send(JSON.stringify({ event: 'clear', streamSid }));
@@ -123,16 +91,13 @@ wss.on('connection', (connection, req) => {
             for (const output of response.response.output) {
                 if (output.type === 'function_call' && output.name === 'consultar_guia') {
                     const { numero_guia } = JSON.parse(output.arguments);
-                    
                     try {
                         const n8nRes = await fetch(N8N_TRACKING_WEBHOOK_URL, {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
                             body: JSON.stringify({ numero_guia, callSid })
                         });
-
                         const info = await n8nRes.json();
-
                         openAiWs.send(JSON.stringify({
                             type: 'conversation.item.create',
                             item: {
@@ -141,9 +106,7 @@ wss.on('connection', (connection, req) => {
                                 output: JSON.stringify(info)
                             }
                         }));
-
                         openAiWs.send(JSON.stringify({ type: 'response.create' }));
-
                     } catch (e) {
                         console.error("Error n8n:", e.message);
                     }
@@ -162,45 +125,30 @@ wss.on('connection', (connection, req) => {
 
     connection.on('message', (message) => {
         const msg = JSON.parse(message);
-
         if (msg.event === 'start') {
             streamSid = msg.start.streamSid;
             callSid = msg.start.callSid;
-            console.log('📞 Llamada:', callSid);
         }
-
-        if (msg.event === 'media') {
-            if (openAiWs.readyState === WebSocket.OPEN) {
-                openAiWs.send(JSON.stringify({
-                    type: 'input_audio_buffer.append',
-                    audio: msg.media.payload
-                }));
-            }
+        if (msg.event === 'media' && openAiWs.readyState === WebSocket.OPEN) {
+            openAiWs.send(JSON.stringify({
+                type: 'input_audio_buffer.append',
+                audio: msg.media.payload
+            }));
         }
     });
 
-    connection.on('close', async () => {
+    connection.on('close', () => {
         if (openAiWs.readyState === WebSocket.OPEN) openAiWs.close();
-
         const duration = Math.floor((Date.now() - startTime) / 1000);
-
         if (N8N_WEBHOOK_URL) {
             fetch(N8N_WEBHOOK_URL, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    event: 'call_ended',
-                    duration,
-                    callSid,
-                    summary: "Llamada procesada"
-                })
+                body: JSON.stringify({ event: 'call_ended', duration, callSid })
             }).catch(() => {});
         }
     });
 });
 
 const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, '0.0.0.0', () => {
-    console.log("🚀 Servidor listo en puerto", PORT);
-});
+server.listen(PORT, () => console.log(`🚀 Puerto ${PORT}`));
