@@ -30,6 +30,7 @@ Diferenciador: No es un suplemento común; es tecnología de biohacking que perm
 
 2. ESQUEMA DE NEGOCIO Y VENTAJAS ESTRATÉGICAS
 Modelo de Negocio: Sistema de Micro-Franquicias de Salud y Longevidad.
+precio de incio 2600 pesos mexicanos incluyen 4 botes de nex02 con envio incluido
 
 Ventajas Competitivas:
 Producto Único sin competencia directa.
