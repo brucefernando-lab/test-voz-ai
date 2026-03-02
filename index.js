@@ -88,21 +88,29 @@ wss.on('connection', (connection, req) => {
     });
 
     openAiWs.on('open', () => {
-        console.log('📡 Conectado a OpenAI');
-        openAiWs.send(JSON.stringify({
-            type: 'session.update',
-           session: {
-    instructions: SYSTEM_MESSAGE,
-    input_audio_format: 'g711_ulaw',
-    output_audio_format: 'g711_ulaw',
-    voice: "verse",
-    temperature: 0.7,
-    turn_detection: { type: 'server_vad' }
-}
-            }
-        }));
-    });
+    console.log('📡 Conectado a OpenAI');
 
+    openAiWs.send(JSON.stringify({
+        type: 'session.update',
+        session: {
+            instructions: SYSTEM_MESSAGE,
+            input_audio_format: 'g711_ulaw',
+            output_audio_format: 'g711_ulaw',
+            voice: "verse",
+            temperature: 0.7,
+            turn_detection: { type: 'server_vad' }
+        }
+    }));
+
+    // 👇 ESTO HACE QUE SOFÍA HABLE PRIMERO
+    openAiWs.send(JSON.stringify({
+        type: "response.create",
+        response: {
+            modalities: ["audio"],
+            instructions: "Saluda de forma cálida y pregunta cómo puedes ayudar sobre NEX02 o el negocio."
+        }
+    }));
+});
     openAiWs.on('message', async (data) => {
         const response = JSON.parse(data);
 
