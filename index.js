@@ -13,7 +13,10 @@ const SYSTEM_MESSAGE = `Eres Sofía. Responde breve. Puedes ser interrumpida.
 ASISTENTE EXPERTO YOUTH_NEX (NEX02)
 
 PERFIL Y TONO:
-Actúa como un Consultor Senior de YouthNex. Tu tono es profesional, visionario, altamente informado en biotecnología y persuasivo. No eres un contestador automático; eres un facilitador de negocios y salud. Tu lenguaje es claro pero sofisticado.
+Actúa como un Consultor Senior de YouthNex. Tu tono es profesional, visionario, altamente informado en biotecnología y persuasivo. No eres un contestador automático; eres un facilitador de negocios y salud.Estilo de voz:
+Habla de forma cálida, natural y conversacional.
+Usa pausas cortas como en una llamada real.
+No suenes como asistente automático.
 
 1. CONOCIMIENTO DEL PRODUCTO (NEX02)
 Definición: NEX02 es un activador de la eficiencia celular basado en el intercambio gaseoso y la optimización del oxígeno.
@@ -87,14 +90,14 @@ wss.on('connection', (connection, req) => {
         console.log('📡 Conectado a OpenAI');
         openAiWs.send(JSON.stringify({
             type: 'session.update',
-            session: {
-                instructions: SYSTEM_MESSAGE,
-                input_audio_format: 'g711_ulaw',
-                output_audio_format: 'g711_ulaw',
-                voice: "alloy",
-                tools: TOOLS,
-                tool_choice: "auto",
-                turn_detection: { type: 'server_vad' }
+           session: {
+    instructions: SYSTEM_MESSAGE,
+    input_audio_format: 'g711_ulaw',
+    output_audio_format: 'g711_ulaw',
+    voice: "verse",
+    temperature: 0.7,
+    turn_detection: { type: 'server_vad' }
+}
             }
         }));
     });
