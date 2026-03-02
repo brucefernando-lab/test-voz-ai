@@ -96,7 +96,7 @@ wss.on('connection', (connection, req) => {
             instructions: SYSTEM_MESSAGE,
             input_audio_format: 'g711_ulaw',
             output_audio_format: 'g711_ulaw',
-            voice: "verse",
+            voice: "aria",
             temperature: 0.7,
             turn_detection: { type: 'server_vad' }
         }
